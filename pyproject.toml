@@ -4,11 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nutanix-mcp"
-version = "0.1.2"
+version = "1.0.0"
 description = "Nutanix MCP — Model Context Protocol server for Nutanix Prism Element, Prism Central, and Move"
 requires-python = ">=3.10"
 license = {file = "LICENSE"}
 readme = "README.md"
+authors = [{ name = "Areen Agrawal" }]
 keywords = ["nutanix", "prism", "mcp", "model-context-protocol", "ai", "copilot"]
 classifiers = [
     "Programming Language :: Python :: 3",

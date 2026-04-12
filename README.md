@@ -54,7 +54,7 @@ Credentials are stored in the OS keyring under the service name `nutanix-mcp`. K
 | Prism Central | `pc.PC-NAME.api_key` (preferred) or `pc.PC-NAME.username` / `pc.PC-NAME.password` |
 | Move appliance | `move.MOVE-NAME.username`, `move.MOVE-NAME.password` |
 
-Lookup falls back from named entry → `pe.default.*` → legacy environment variables (`NUTANIX_PE_USERNAME` etc.) for backward compatibility.
+Lookup uses named keyring entries and PE default keyring fallback where applicable.
 
 ### Cluster inventory — `inventory.yaml`
 
@@ -183,6 +183,10 @@ See [available_tools.md](https://github.com/veg-salad/nutanix_mcp/blob/main/avai
 - PC tools use `extId` as the entity identifier; use values from `list_*` calls as input to `get_*` calls
 - Stats metrics are in **ppm** (parts per million); divide by 10,000 to convert to a percentage
 - Transport is **stdio** — the server runs locally and is managed by VS Code
+
+## Security
+
+See [SECURITY_POSTURE.md](https://github.com/veg-salad/nutanix_mcp/blob/main/SECURITY_POSTURE.md) for current security controls, hardening behavior, and operational cautions.
 
 ## Disclaimer
 

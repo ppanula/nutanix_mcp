@@ -12,6 +12,13 @@ cluster or appliance.
 import requests
 import urllib3
 
+from nutanix_mcp.security import (
+    enforce_move_request_policy,
+    enforce_pc_request_policy,
+    enforce_pe_request_policy,
+    get_active_request_timeout,
+)
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 _PE_BASE_PATH = "/PrismGateway/services/rest/v2.0"
@@ -25,6 +32,7 @@ def pe_get(path, params=None, *, host, username, password, verify_ssl=False, bas
     needed, e.g. base_path='/api/nutanix/v0.8' for the ergon task service.
     """
     effective_base = base_path if base_path is not None else _PE_BASE_PATH
+    enforce_pe_request_policy(path, params, effective_base)
     url = f"https://{host}:9440{effective_base}{path}"
     try:
         response = requests.get(
@@ -32,7 +40,7 @@ def pe_get(path, params=None, *, host, username, password, verify_ssl=False, bas
             auth=(username, password),
             params=params,
             verify=verify_ssl,
-            timeout=30,
+            timeout=get_active_request_timeout(30),
             headers={"Accept": "application/json"},
         )
         response.raise_for_status()
@@ -48,8 +56,7 @@ def pe_get(path, params=None, *, host, username, password, verify_ssl=False, bas
         ) from exc
     except requests.exceptions.HTTPError as exc:
         status = exc.response.status_code if exc.response is not None else "unknown"
-        body = exc.response.text if exc.response is not None else ""
-        raise RuntimeError(f"HTTP {status} from Nutanix PE API: {body}") from exc
+        raise RuntimeError(f"HTTP {status} from Nutanix PE API.") from exc
 
 
 def pc_v4_get(path, params=None, *, host, api_key="", username="", password="", verify_ssl=False):
@@ -68,6 +75,7 @@ def pc_v4_get(path, params=None, *, host, api_key="", username="", password="", 
             f"No Prism Central credentials found for host '{host}'. "
             "Run 'nutanix-mcp configure' to store credentials in the OS keyring."
         )
+    enforce_pc_request_policy(path, params)
     url = f"https://{host}:9440{path}"
     if api_key:
         auth = None
@@ -81,7 +89,7 @@ def pc_v4_get(path, params=None, *, host, api_key="", username="", password="", 
             auth=auth,
             params=params,
             verify=verify_ssl,
-            timeout=30,
+            timeout=get_active_request_timeout(30),
             headers=headers,
         )
         response.raise_for_status()
@@ -95,8 +103,7 @@ def pc_v4_get(path, params=None, *, host, api_key="", username="", password="", 
         raise RuntimeError(f"Cannot connect to {host}:9440. Verify the host is reachable.") from exc
     except requests.exceptions.HTTPError as exc:
         status = exc.response.status_code if exc.response is not None else "unknown"
-        body_text = exc.response.text if exc.response is not None else ""
-        raise RuntimeError(f"HTTP {status} from Nutanix PC API: {body_text}") from exc
+        raise RuntimeError(f"HTTP {status} from Nutanix PC API.") from exc
 
 
 def move_get(path, params=None, *, host, username, password, verify_ssl=False):
@@ -105,6 +112,7 @@ def move_get(path, params=None, *, host, username, password, verify_ssl=False):
     Move runs on port 443 (not 9440).
     host, username, password, verify_ssl — supplied by resolve_move_instance().
     """
+    enforce_move_request_policy(path, params)
     url = f"https://{host}{path}"
     try:
         response = requests.get(
@@ -112,7 +120,7 @@ def move_get(path, params=None, *, host, username, password, verify_ssl=False):
             auth=(username, password),
             params=params,
             verify=verify_ssl,
-            timeout=30,
+            timeout=get_active_request_timeout(30),
             headers={"Accept": "application/json"},
         )
         response.raise_for_status()
@@ -127,5 +135,4 @@ def move_get(path, params=None, *, host, username, password, verify_ssl=False):
         ) from exc
     except requests.exceptions.HTTPError as exc:
         status = exc.response.status_code if exc.response is not None else "unknown"
-        body = exc.response.text if exc.response is not None else ""
-        raise RuntimeError(f"HTTP {status} from Nutanix Move API: {body}") from exc
+        raise RuntimeError(f"HTTP {status} from Nutanix Move API.") from exc

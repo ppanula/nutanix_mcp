@@ -6,8 +6,12 @@ Import this module wherever @mcp.tool() decorators are needed.
 import logging
 
 from mcp.server.fastmcp import FastMCP
+from nutanix_mcp.security import get_security_config, guard_tool
 
 logging.getLogger("mcp").setLevel(logging.WARNING)
+
+# Validate security configuration once at startup so misconfiguration fails fast.
+get_security_config()
 
 mcp = FastMCP(
     "Nutanix MCP",
@@ -25,3 +29,18 @@ mcp = FastMCP(
         "PC tools operate across all clusters managed by that Prism Central instance."
     ),
 )
+
+_raw_tool = mcp.tool
+
+
+def _secured_tool(*tool_args, **tool_kwargs):
+    """Wrap each registered tool with runtime guardrails."""
+    base_decorator = _raw_tool(*tool_args, **tool_kwargs)
+
+    def decorator(func):
+        return base_decorator(guard_tool(func.__name__)(func))
+
+    return decorator
+
+
+mcp.tool = _secured_tool
