@@ -133,6 +133,7 @@ nutanix-mcp/
 ├── inventory.yaml              Cluster, PC, and Move registry (user-generated)
 ├── pyproject.toml              Package metadata and dependencies
 ├── available_tools.md          Full tool reference
+├── SECURITY_POSTURE.md         Security posture, cautions, and operational guidance
 └── src/
     └── nutanix_mcp/
         ├── __init__.py
@@ -142,6 +143,7 @@ nutanix-mcp/
         ├── credentials.py      OS keyring read/write helpers
         ├── registry.py         Inventory loading, host+credential resolvers, JSON helper
         ├── client.py           HTTP clients: pe_get, pc_v4_get, move_get
+        ├── security.py         Central security policy, limits, and startup config validation
         └── tools/
             ├── inventory.py            list_inventory
             ├── pe_cluster.py           list_clusters, get_cluster

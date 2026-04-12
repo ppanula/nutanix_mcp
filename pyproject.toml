@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nutanix-mcp"
-version = "1.0.1"
+version = "1.0.2"
 description = "Nutanix MCP — Model Context Protocol server for Nutanix Prism Element, Prism Central, and Move"
 requires-python = ">=3.10"
 license = {file = "LICENSE"}
