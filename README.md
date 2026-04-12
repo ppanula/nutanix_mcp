@@ -1,7 +1,7 @@
 ﻿# Nutanix MCP
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![PyPI](https://img.shields.io/pypi/v/nutanix-mcp)](https://pypi.org/project/nutanix-mcp/)
+[![PyPI](https://img.shields.io/pypi/v/nutanix-mcp?cacheSeconds=300)](https://pypi.org/project/nutanix-mcp/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 
 Ask GitHub Copilot questions about your Nutanix environment in plain English — VMs, hosts, storage, networking, alerts, tasks, protection domains, resource utilization, migration plans, and more — directly from VS Code.
