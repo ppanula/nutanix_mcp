@@ -6,13 +6,15 @@ Usage:
 """
 
 import getpass
+import importlib
 import json
 import os
-import subprocess
+import shutil
 import sys
 
 MIN_PYTHON = (3, 10)
 _SERVICE = "nutanix-mcp"
+_SERVER_NAME = "nutanix-mcp"
 
 
 # ---------------------------------------------------------------------------
@@ -40,15 +42,30 @@ def _check_python():
 
 def _install_dependencies():
     _info("Verifying dependencies...")
-    deps = ["mcp[cli]>=1.3.0", "requests>=2.31.0", "urllib3>=2.0.0",
-            "pyyaml>=6.0.0", "keyring>=24.0.0", "keyrings.alt>=4.0.0"]
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "-q"] + deps,
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        _fail(f"pip install failed:\n{result.stderr}")
-    _ok("Dependencies up to date")
+    required = [
+        ("mcp", "mcp[cli]>=1.3.0"),
+        ("requests", "requests>=2.31.0"),
+        ("urllib3", "urllib3>=2.0.0"),
+        ("yaml", "pyyaml>=6.0.0"),
+        ("keyring", "keyring>=24.0.0"),
+        ("keyrings.alt", "keyrings.alt>=4.0.0"),
+    ]
+    missing: list[str] = []
+    for module_name, package_name in required:
+        try:
+            importlib.import_module(module_name)
+        except ModuleNotFoundError:
+            missing.append(package_name)
+    if missing:
+        missing_csv = ", ".join(missing)
+        _fail(
+            "Missing runtime dependencies: "
+            f"{missing_csv}\n"
+            "Reinstall with one of:\n"
+            "  uv tool install --reinstall nutanix-mcp\n"
+            "  pip install -U " + missing_csv
+        )
+    _ok("Dependencies available")
 
 
 def _configure_credentials():
@@ -242,33 +259,108 @@ def _configure_move_inventory():
         _ok(f"inventory.yaml updated — {len(instances)} Move appliance(s)")
 
 
-def _create_mcp_json():
+def _build_server_config(inventory_value: str, *, with_tools: bool = False) -> dict:
+    server = {
+        "type": "stdio",
+        "command": "nutanix-mcp",
+        "env": {
+            "NUTANIX_MCP_INVENTORY": inventory_value,
+        },
+    }
+    if with_tools:
+        server["args"] = []
+        server["tools"] = ["*"]
+    return server
+
+
+def _load_json_object(path: str) -> dict:
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path) as f:
+            parsed = json.load(f)
+    except OSError as exc:
+        _fail(f"Unable to read existing config '{path}': {exc}")
+    except json.JSONDecodeError as exc:
+        _fail(
+            f"Existing config is not valid JSON: {path}\n"
+            f"Please fix it manually before running configure again ({exc.msg})."
+        )
+    if not isinstance(parsed, dict):
+        _fail(f"Existing config root must be a JSON object: {path}")
+    return parsed
+
+
+def _get_servers_map(document: dict, key: str) -> dict:
+    maybe_servers = document.get(key)
+    if maybe_servers is None:
+        return {}
+    if not isinstance(maybe_servers, dict):
+        _fail(f"Config key '{key}' must be a JSON object.")
+    return dict(maybe_servers)
+
+
+def _write_json_with_backup(path: str, payload: dict):
+    if os.path.exists(path):
+        backup_path = f"{path}.bak"
+        shutil.copy2(path, backup_path)
+    with open(path, "w") as f:
+        json.dump(payload, f, indent=2)
+
+
+def _create_vscode_mcp_json():
     """Write .vscode/mcp.json — server config only, no credentials."""
     vscode_dir = os.path.join(os.getcwd(), ".vscode")
     mcp_path = os.path.join(vscode_dir, "mcp.json")
 
-    # Preserve any existing non-nutanix-mcp servers
-    existing_servers = {}
-    if os.path.exists(mcp_path):
-        try:
-            with open(mcp_path) as f:
-                existing_servers = json.load(f).get("servers", {})
-        except Exception:
-            pass
-    existing_servers.pop("nutanix-prism", None)  # remove old server key if present
+    document = _load_json_object(mcp_path)
 
-    existing_servers["nutanix-mcp"] = {
-        "type": "stdio",
-        "command": "nutanix-mcp",
-        "env": {
-            "NUTANIX_MCP_INVENTORY": "${workspaceFolder}/inventory.yaml",
-        },
-    }
+    # Preserve any existing non-nutanix-mcp servers
+    existing_servers = _get_servers_map(document, "servers")
+    existing_servers.pop("nutanix-prism", None)  # remove old server key if present
+    existing_servers.pop(_SERVER_NAME, None)
+
+    existing_servers[_SERVER_NAME] = _build_server_config("${workspaceFolder}/inventory.yaml")
+    document["servers"] = existing_servers
 
     os.makedirs(vscode_dir, exist_ok=True)
-    with open(mcp_path, "w") as f:
-        json.dump({"servers": existing_servers}, f, indent=2)
+    _write_json_with_backup(mcp_path, document)
     _ok(".vscode/mcp.json written (no credentials stored)")
+
+
+def _create_copilot_cli_mcp_json():
+    """Write ~/.copilot/mcp-config.json (or $COPILOT_HOME) with MCP server config."""
+    copilot_home = os.environ.get("COPILOT_HOME") or os.path.join(os.path.expanduser("~"), ".copilot")
+    mcp_path = os.path.join(copilot_home, "mcp-config.json")
+    inventory_path = os.path.abspath(_inventory_path())
+
+    document = _load_json_object(mcp_path)
+    existing_servers = _get_servers_map(document, "mcpServers")
+    # Preserve legacy 'servers' key content if users previously stored MCP entries there.
+    existing_servers.update(_get_servers_map(document, "servers"))
+    existing_servers[_SERVER_NAME] = _build_server_config(inventory_path, with_tools=True)
+    document.pop("servers", None)
+    document["mcpServers"] = existing_servers
+
+    os.makedirs(copilot_home, exist_ok=True)
+    _write_json_with_backup(mcp_path, document)
+    _ok(f"Copilot CLI MCP config written: {mcp_path}")
+
+
+def _select_config_targets() -> tuple[bool, bool]:
+    print("\n  Choose config target(s):")
+    print("    1) VS Code (.vscode/mcp.json)")
+    print("    2) GitHub Copilot CLI (~/.copilot/mcp-config.json)")
+    print("    3) Both")
+    while True:
+        raw = input("    Target [1/2/3] [3]: ").strip().lower()
+        if raw in ("", "3", "both", "all"):
+            return True, True
+        if raw in ("1", "vscode", "vs code"):
+            return True, False
+        if raw in ("2", "copilot-cli", "copilot", "cli"):
+            return False, True
+        _warn("Please enter 1, 2, or 3.")
 
 
 # ---------------------------------------------------------------------------
@@ -284,12 +376,22 @@ def configure():
     _configure_pc_inventory()
     _configure_move_inventory()
     _configure_credentials()
-    _create_mcp_json()
+    write_vscode, write_copilot_cli = _select_config_targets()
+    if write_vscode:
+        _create_vscode_mcp_json()
+    if write_copilot_cli:
+        _create_copilot_cli_mcp_json()
     print("\n" + "-" * 40)
     print("  Setup complete!\n")
-    print("  1. Open this folder in VS Code")
-    print("  2. Open Copilot Chat → Agent mode")
-    print("  3. Ask about your Nutanix environment\n")
+    if write_vscode:
+        print("  VS Code:")
+        print("    1. Open this folder in VS Code")
+        print("    2. Open Copilot Chat → Agent mode")
+    if write_copilot_cli:
+        print("  GitHub Copilot CLI:")
+        print("    1. Start Copilot CLI in this folder")
+        print("    2. Run /mcp show to confirm 'nutanix-mcp' is available")
+    print("  Ask about your Nutanix environment\n")
 
 
 # ---------------------------------------------------------------------------
